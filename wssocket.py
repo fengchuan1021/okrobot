@@ -16,7 +16,8 @@ class Wssocket:
         self.loop = loop
         self.callback=onmessage
         while 1:
-            try:
+            if 1:
+            #try:
                 self.close=False
                 self.sock=await websockets.connect(self.endpoint,ping_interval=None)
                 await onconnect(self.sendqueue)
@@ -26,12 +27,12 @@ class Wssocket:
                 s=loop.create_task(self.send())
                 results=await asyncio.gather(t1,t2,s)
                 print('results',results)
-            except Exception as e:
-                t1.cancel()
-                t2.cancel()
-                s.cancel()
-                print(e, 20)
-                self.close=True
+            # except Exception as e:
+            #     t1.cancel()
+            #     t2.cancel()
+            #     s.cancel()
+            #     print(e, 20)
+            #     self.close=True
 
                 await asyncio.sleep(0.1)
     async def ping(self):
@@ -41,7 +42,7 @@ class Wssocket:
 
             await asyncio.sleep(5)
             if time.time()-self.lastrecv>15:
-                print('send ping')
+                #print('send ping')
                 await self.sock.send('ping')
                 self.pongsingnal=self.loop.create_future()
                 await asyncio.wait_for(self.pongsingnal,timeout=15)
@@ -57,7 +58,7 @@ class Wssocket:
 
             self.lastrecv = time.time()
             data=await self.sock.recv()
-            print('data:',data)
+
             if data=='pong':
                 self.pongsingnal.set_result(None)
                 continue

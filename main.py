@@ -10,15 +10,18 @@ import json
 import aiohttp
 import request as myrequst
 import numpy as np
+import positionandorder
 loop =  asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 pubsock=None
 prisock=None
-loop.run_until_complete(myrequst.getdelttime())
+import wsserver
 
+loop.run_until_complete(myrequst.getdelttime())
+loop.create_task(wsserver.main())
 pubsock=Wssocket(config.pubsocketurl)
 prisock=Wssocket(config.prisocketurl)
-
+loop.run_until_complete(positionandorder.position.init(loop,pubsock,prisock))
 async def _gethistorydata(instid):
     config.strategies[instid].update({"candle15m": np.zeros((100, 7), np.float32),
                                       "candle1D": np.zeros((100, 7), np.float32),
@@ -54,16 +57,33 @@ async def _gethistorydata(instid):
                         }
                     ]
                 })
+async def _inistrategy(instid,strategy):
+    if instid not in config.strategies:
+        config.strategies[instid]={}
+        await _gethistorydata(instid)
+    strategy['stopwin']=sorted(strategy['stopwin'],key=lambda item:item['withdrawal'])
+    strategy['stoploss'] = sorted(strategy['stoploss'], key=lambda item: item['withdrawal'])
+    config.strategies[instid]['strategy']=strategy
+    await pubsock.sendqueue.put({
+                    "op": "subscribe",
+                    "args": [{
+                        "channel": "candle15m",
+                        "instId": instid
+                    },
+                        {
+                            "channel": "candle1D",
+                            "instId": instid
+                        }
+                    ]
+                })
+
 async def addstrategy(request):
     strategy= await request.json()
     print('stra',strategy)
     instid=strategy['instid']
     await config.redis.hset('strategies',strategy['instid'],await request.read())
+    await _inistrategy(instid,strategy)
 
-    if instid not in config.strategies:
-        config.strategies[instid]={}
-        await _gethistorydata(instid)
-    config.strategies[instid]['strategy']=strategy
     return web.Response(text='done')
 async def getstrategies(request):
     return web.json_response({'status':0,'data':{instid:config.strategies[instid]['strategy'] for instid in config.strategies}})
@@ -90,16 +110,19 @@ async def delstratogy(request):
 async def initstrategies():
 
     val = await config.redis.hgetall('strategies')
-    print('val',val)
-    for instid in val:
-        config.strategies[instid.decode()]={'strategy':json.loads(val[instid])}
-
-    th=[_gethistorydata(i.decode()) for i in val]
+    th=[_inistrategy(instid.decode(),json.loads(val[instid])) for instid in val]
+        #config.strategies[instid.decode()]={'strategy':}
     if th:
         await asyncio.gather(*th)
 loop.run_until_complete(initstrategies())
 
+async def getpositiondetail(request):
+    instid = request.rel_url.query['instid']
+    posside = request.rel_url.query['posside']
+    print(f'{instid=}')
+    print(f'{posside=}')
 
+    return web.json_response({'status':0,'data':positionandorder.position.orders[instid][posside]})
 loop.create_task(pubsock.init(loop,publicsock.onmessage,publicsock.onconnect))
 loop.create_task(prisock.init(loop, privatesock.onmessage, privatesock.onconnect))
 app = web.Application()
@@ -107,7 +130,7 @@ app.add_routes([web.post('/addstrategy', addstrategy),
                 web.get('/getstrategies',getstrategies),
                 web.get('/getallswapproducts',getallswapproducts),
                 web.get('/delstratogy',delstratogy),
-
+                web.get('/getpositiondetail',getpositiondetail),
 
                 ])
 

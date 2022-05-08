@@ -4,7 +4,7 @@ import base64
 import aiohttp
 import config
 import time
-
+import asyncio
 async def get(url):
     timestamp=datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
     method="GET"
@@ -26,7 +26,8 @@ async def get(url):
 
 async def getallswapproducts():
     url = '/api/v5/public/instruments?instType=SWAP'
-    return await get(url)
+    data=await get(url)
+    return [item for item in data if item['instId'].endswith('USDT-SWAP')]
 async def getdelttime():
     url="/api/v5/public/time"
     try:
@@ -41,5 +42,22 @@ async def getdelttime():
 async def gethistoryorder():
     url='/api/v5/trade/orders-history?instType=SWAP'
     data=await get(url)
-    print("len(data)",len(data))
+    print("len(data)",data)
     return data
+
+async def getbalance():
+    url='/api/v5/account/balance'
+    data=await get(url)
+    print(data)
+    return data
+async def getpositions():
+    url='/api/v5/account/positions'
+    data=await get(url)
+    return data
+async def tmain():
+    url='/api/v5/account/balance?instType=SWAP'
+    data=await get(url)
+    print(data)
+
+if __name__ == '__main__':
+    asyncio.run(getbalance())
